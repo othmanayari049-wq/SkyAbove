@@ -24,6 +24,7 @@ export type Aircraft = {
 export type NearbyAircraftResponse = {
   generated_at: string;
   source_time: number | null;
+  data_provider: string;
   center: Coordinate;
   radius_km: number;
   count: number;

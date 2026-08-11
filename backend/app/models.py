@@ -32,6 +32,7 @@ class Aircraft(BaseModel):
 class NearbyAircraftResponse(BaseModel):
     generated_at: datetime
     source_time: int | None = None
+    data_provider: str = "unknown"
     center: Coordinate
     radius_km: float
     count: int

@@ -3,10 +3,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
+from .adsblol import AdsbLolClient
 from .config import get_settings
 from .models import NearbyAircraftResponse
-from .opensky import OpenSkyClient, OpenSkyError, OpenSkyRateLimitError
-from .service import AircraftService
+from .opensky import OpenSkyClient, OpenSkyRateLimitError
+from .service import AircraftDataError, AircraftService
 
 settings = get_settings()
 
@@ -14,14 +15,16 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     opensky = OpenSkyClient(settings)
-    app.state.aircraft_service = AircraftService(settings, opensky)
+    adsblol = AdsbLolClient(settings)
+    app.state.aircraft_service = AircraftService(settings, opensky, adsblol)
     yield
+    await adsblol.close()
     await opensky.close()
 
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.1.0",
+    version="0.2.0",
     description="Location-scoped live aircraft data for the SkyAbove web application.",
     lifespan=lifespan,
 )
@@ -60,7 +63,7 @@ async def nearby_aircraft(
             detail="OpenSky API credit limit reached. Try again after the upstream retry window.",
             headers=headers,
         ) from exc
-    except OpenSkyError as exc:
+    except AircraftDataError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     response.headers["Cache-Control"] = "private, max-age=5"
