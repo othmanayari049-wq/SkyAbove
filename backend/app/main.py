@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from .adsblol import AdsbFiClient, AdsbLolClient
+from .airplaneslive import AirplanesLiveClient
 from .config import get_settings
 from .models import NearbyAircraftResponse
 from .opensky import OpenSkyClient, OpenSkyRateLimitError
@@ -17,8 +18,16 @@ async def lifespan(app: FastAPI):
     opensky = OpenSkyClient(settings)
     adsblol = AdsbLolClient(settings)
     adsbfi = AdsbFiClient(settings)
-    app.state.aircraft_service = AircraftService(settings, opensky, adsblol, adsbfi)
+    airplaneslive = AirplanesLiveClient(settings)
+    app.state.aircraft_service = AircraftService(
+        settings,
+        opensky,
+        adsblol,
+        adsbfi,
+        airplaneslive,
+    )
     yield
+    await airplaneslive.close()
     await adsbfi.close()
     await adsblol.close()
     await opensky.close()
@@ -26,7 +35,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.3.0",
+    version="0.4.0",
     description="Location-scoped live aircraft data for the SkyAbove web application.",
     lifespan=lifespan,
 )
