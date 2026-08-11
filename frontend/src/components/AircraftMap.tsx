@@ -1,7 +1,7 @@
 "use client";
 
 import L from "leaflet";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Circle,
   MapContainer,
@@ -19,13 +19,14 @@ import {
   formatDistance,
   formatSpeed,
 } from "@/lib/format";
+import { projectAircraftPosition } from "@/lib/geo";
 import type { Aircraft, Coordinate } from "@/types/aircraft";
 
 function planeIcon(aircraft: Aircraft, selected: boolean) {
-  const rotation = aircraft.track_deg ?? 0;
+  const rotation = ((aircraft.track_deg ?? 0) + 360) % 360;
   return L.divIcon({
     className: "aircraft-marker-shell",
-    html: `<div class="aircraft-marker ${selected ? "aircraft-marker--selected" : ""}" style="transform: rotate(${rotation}deg)">✈</div>`,
+    html: `<div class="aircraft-marker ${selected ? "aircraft-marker--selected" : ""}" style="transform: rotate(${rotation}deg)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.5c-.85 0-1.35.7-1.35 1.55v5.9L3.7 12.8v1.85l6.95-1.9v4.85l-2.2 1.7v1.55L12 19.9l3.55.95V19.3l-2.2-1.7v-4.85l6.95 1.9V12.8l-6.95-3.85v-5.9c0-.85-.5-1.55-1.35-1.55Z"/></svg></div>`,
     iconSize: [34, 34],
     iconAnchor: [17, 17],
   });
@@ -75,7 +76,22 @@ export default function AircraftMap({
   selectedTrail,
   onSelect,
 }: Props) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const rings = [0.25, 0.5, 1].map((ratio) => radiusKm * 1000 * ratio);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const projectedAircraft = useMemo(
+    () =>
+      aircraft.map((plane) => ({
+        plane,
+        position: projectAircraftPosition(plane, nowMs),
+      })),
+    [aircraft, nowMs],
+  );
 
   return (
     <MapContainer
@@ -119,12 +135,12 @@ export default function AircraftMap({
         />
       )}
 
-      {aircraft.map((plane) => {
+      {projectedAircraft.map(({ plane, position }) => {
         const selected = plane.icao24 === selectedIcao;
         return (
           <Marker
             key={plane.icao24}
-            position={[plane.latitude, plane.longitude]}
+            position={[position.lat, position.lon]}
             icon={planeIcon(plane, selected)}
             eventHandlers={{ click: () => onSelect(plane.icao24) }}
             zIndexOffset={selected ? 1000 : 0}
@@ -145,6 +161,7 @@ export default function AircraftMap({
                   {cardinalDirection(plane.bearing_deg)} {Math.round(plane.bearing_deg)}° ·{" "}
                   {formatDistance(plane.distance_km)}
                 </span>
+                <span>Provider: {plane.data_provider || "Unknown"}</span>
               </div>
             </Popup>
           </Marker>
