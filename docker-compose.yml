@@ -4,7 +4,9 @@ services:
       context: ./backend
     environment:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-      AIRCRAFT_PROVIDERS: ${AIRCRAFT_PROVIDERS:-adsblol}
+      AIRCRAFT_PROVIDERS: ${AIRCRAFT_PROVIDERS:-adsbfi,adsblol,opensky}
+      ADSBFI_BASE_URL: ${ADSBFI_BASE_URL:-https://opendata.adsb.fi/api}
+      ADSBFI_TIMEOUT_SECONDS: ${ADSBFI_TIMEOUT_SECONDS:-12}
       ADSBLOL_BASE_URL: ${ADSBLOL_BASE_URL:-https://api.adsb.lol}
       ADSBLOL_TIMEOUT_SECONDS: ${ADSBLOL_TIMEOUT_SECONDS:-12}
       OPENSKY_CLIENT_ID: ${OPENSKY_CLIENT_ID:-}
