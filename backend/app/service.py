@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from .adsblol import AdsbFiClient, AdsbFiError, AdsbLolClient, AdsbLolError
+from .airplaneslive import AirplanesLiveClient, AirplanesLiveError
 from .config import Settings
 from .geo import haversine_km, initial_bearing_deg, radius_to_bounding_boxes
 from .models import Aircraft, Coordinate, NearbyAircraftResponse
@@ -206,11 +207,13 @@ class AircraftService:
         opensky: OpenSkyClient,
         adsblol: AdsbLolClient,
         adsbfi: AdsbFiClient,
+        airplaneslive: AirplanesLiveClient,
     ) -> None:
         self.settings = settings
         self.opensky = opensky
         self.adsblol = adsblol
         self.adsbfi = adsbfi
+        self.airplaneslive = airplaneslive
         self._cache: dict[tuple[float, float, float], CacheEntry] = {}
         self._cache_lock = asyncio.Lock()
 
@@ -239,6 +242,25 @@ class AircraftService:
             if aircraft is not None:
                 by_icao[aircraft.icao24] = aircraft
         return sorted(by_icao.values(), key=lambda item: item.distance_km)
+
+    async def _from_airplaneslive(
+        self, lat: float, lon: float, radius_km: float
+    ) -> NearbyAircraftResponse:
+        payload = await self.airplaneslive.fetch_nearby(lat, lon, radius_km)
+        aircraft_list = self._normalize_adsb_payload(
+            payload.aircraft, payload.source_time, lat, lon, radius_km
+        )
+        return NearbyAircraftResponse(
+            generated_at=datetime.now(UTC),
+            source_time=payload.source_time,
+            data_provider="Airplanes.live",
+            center=Coordinate(lat=lat, lon=lon),
+            radius_km=radius_km,
+            count=len(aircraft_list),
+            cache_hit=False,
+            upstream_rate_limit_remaining=None,
+            aircraft=aircraft_list,
+        )
 
     async def _from_adsbfi(
         self, lat: float, lon: float, radius_km: float
@@ -336,13 +358,15 @@ class AircraftService:
 
         for provider in self.settings.aircraft_provider_list:
             try:
-                if provider == "adsbfi":
+                if provider == "airplaneslive":
+                    result = await self._from_airplaneslive(lat, lon, radius_km)
+                elif provider == "adsbfi":
                     result = await self._from_adsbfi(lat, lon, radius_km)
                 elif provider == "adsblol":
                     result = await self._from_adsblol(lat, lon, radius_km)
                 else:
                     result = await self._from_opensky(lat, lon, radius_km)
-            except (AdsbFiError, AdsbLolError, OpenSkyError) as exc:
+            except (AirplanesLiveError, AdsbFiError, AdsbLolError, OpenSkyError) as exc:
                 last_error = exc
                 continue
 
