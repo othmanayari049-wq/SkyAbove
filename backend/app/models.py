@@ -24,6 +24,7 @@ class Aircraft(BaseModel):
     position_source: str | None = None
     category: str | None = None
     last_contact: int | None = None
+    data_provider: str | None = None
     distance_km: float = Field(ge=0)
     bearing_deg: float = Field(ge=0, lt=360)
     overhead_candidate: bool = False
