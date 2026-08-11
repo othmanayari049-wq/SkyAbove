@@ -103,7 +103,7 @@ def test_normalize_adsblol_state_maps_units_and_fields() -> None:
     assert aircraft.icao24 == "710123"
     assert aircraft.position_source == "ADSB ICAO"
     assert round(aircraft.baro_altitude_m or 0) == 9144
-    assert round(aircraft.velocity_mps or 0) == 232
+    assert abs((aircraft.velocity_mps or 0) - 231.4998) < 0.001
     assert aircraft.distance_km < 2
     assert aircraft.overhead_candidate is True
 
