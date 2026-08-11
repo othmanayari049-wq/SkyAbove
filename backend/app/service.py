@@ -124,6 +124,7 @@ def normalize_state(
         position_source=POSITION_SOURCES.get(position_source_raw),
         category=AIRCRAFT_CATEGORIES.get(category_raw),
         last_contact=last_contact,
+        data_provider="OpenSky",
         distance_km=round(distance_km, 3),
         bearing_deg=round(
             initial_bearing_deg(center_lat, center_lon, float(latitude), float(longitude)), 2
@@ -132,7 +133,7 @@ def normalize_state(
     )
 
 
-def normalize_adsblol_state(
+def normalize_adsb_state(
     state: dict[str, Any],
     *,
     center_lat: float,
@@ -140,6 +141,7 @@ def normalize_adsblol_state(
     radius_km: float,
     overhead_threshold_km: float,
     source_time: int | None,
+    data_provider: str,
 ) -> Aircraft | None:
     latitude = state.get("lat")
     longitude = state.get("lon")
@@ -164,15 +166,16 @@ def normalize_adsblol_state(
     alt_baro = state.get("alt_baro")
     on_ground = isinstance(alt_baro, str) and alt_baro.lower() == "ground"
 
-    seen = _number(state.get("seen"))
+    position_age = _number(state.get("seen_pos"))
+    if position_age is None:
+        position_age = _number(state.get("seen"))
     last_contact = None
-    if source_time is not None and seen is not None:
-        last_contact = max(0, int(source_time - seen))
+    if source_time is not None and position_age is not None:
+        last_contact = max(0, int(source_time - position_age))
 
     source_raw = state.get("type")
     source_label = str(source_raw).replace("_", " ").upper() if source_raw else "ADS-B"
     category_raw = state.get("category")
-
     ground_speed = _number(state.get("gs"))
     baro_rate = _number(state.get("baro_rate"))
 
@@ -192,11 +195,33 @@ def normalize_adsblol_state(
         position_source=source_label,
         category=str(category_raw) if category_raw is not None else None,
         last_contact=last_contact,
+        data_provider=data_provider,
         distance_km=round(distance_km, 3),
         bearing_deg=round(
             initial_bearing_deg(center_lat, center_lon, float(latitude), float(longitude)), 2
         ),
         overhead_candidate=(not on_ground and distance_km <= overhead_threshold_km),
+    )
+
+
+def normalize_adsblol_state(
+    state: dict[str, Any],
+    *,
+    center_lat: float,
+    center_lon: float,
+    radius_km: float,
+    overhead_threshold_km: float,
+    source_time: int | None,
+) -> Aircraft | None:
+    """Compatibility wrapper for the original ADSB.lol normalizer."""
+    return normalize_adsb_state(
+        state,
+        center_lat=center_lat,
+        center_lon=center_lon,
+        radius_km=radius_km,
+        overhead_threshold_km=overhead_threshold_km,
+        source_time=source_time,
+        data_provider="ADSB.lol",
     )
 
 
@@ -215,11 +240,27 @@ class AircraftService:
         self.adsbfi = adsbfi
         self.airplaneslive = airplaneslive
         self._cache: dict[tuple[float, float, float], CacheEntry] = {}
+        self._provider_cache: dict[tuple[str, float, float, float], CacheEntry] = {}
         self._cache_lock = asyncio.Lock()
 
     @staticmethod
     def _cache_key(lat: float, lon: float, radius_km: float) -> tuple[float, float, float]:
-        return (round(lat, 4), round(lon, 4), round(radius_km, 1))
+        return (round(lat, 3), round(lon, 3), round(radius_km, 1))
+
+    @staticmethod
+    def _provider_cache_key(
+        provider: str, lat: float, lon: float, radius_km: float
+    ) -> tuple[str, float, float, float]:
+        return (provider, round(lat, 3), round(lon, 3), round(radius_km, 1))
+
+    def _provider_ttl(self, provider: str) -> float:
+        if provider == "airplaneslive":
+            return self.settings.airplaneslive_refresh_seconds
+        if provider == "adsbfi":
+            return self.settings.adsbfi_refresh_seconds
+        if provider == "adsblol":
+            return self.settings.adsblol_refresh_seconds
+        return self.settings.opensky_refresh_seconds
 
     def _normalize_adsb_payload(
         self,
@@ -228,16 +269,18 @@ class AircraftService:
         lat: float,
         lon: float,
         radius_km: float,
+        data_provider: str,
     ) -> list[Aircraft]:
         by_icao: dict[str, Aircraft] = {}
         for state in aircraft_states:
-            aircraft = normalize_adsblol_state(
+            aircraft = normalize_adsb_state(
                 state,
                 center_lat=lat,
                 center_lon=lon,
                 radius_km=radius_km,
                 overhead_threshold_km=self.settings.overhead_threshold_km,
                 source_time=source_time,
+                data_provider=data_provider,
             )
             if aircraft is not None:
                 by_icao[aircraft.icao24] = aircraft
@@ -248,7 +291,12 @@ class AircraftService:
     ) -> NearbyAircraftResponse:
         payload = await self.airplaneslive.fetch_nearby(lat, lon, radius_km)
         aircraft_list = self._normalize_adsb_payload(
-            payload.aircraft, payload.source_time, lat, lon, radius_km
+            payload.aircraft,
+            payload.source_time,
+            lat,
+            lon,
+            radius_km,
+            "Airplanes.live",
         )
         return NearbyAircraftResponse(
             generated_at=datetime.now(UTC),
@@ -267,7 +315,7 @@ class AircraftService:
     ) -> NearbyAircraftResponse:
         payload = await self.adsbfi.fetch_nearby(lat, lon, radius_km)
         aircraft_list = self._normalize_adsb_payload(
-            payload.aircraft, payload.source_time, lat, lon, radius_km
+            payload.aircraft, payload.source_time, lat, lon, radius_km, "adsb.fi"
         )
         return NearbyAircraftResponse(
             generated_at=datetime.now(UTC),
@@ -286,7 +334,7 @@ class AircraftService:
     ) -> NearbyAircraftResponse:
         payload = await self.adsblol.fetch_nearby(lat, lon, radius_km)
         aircraft_list = self._normalize_adsb_payload(
-            payload.aircraft, payload.source_time, lat, lon, radius_km
+            payload.aircraft, payload.source_time, lat, lon, radius_km, "ADSB.lol"
         )
         return NearbyAircraftResponse(
             generated_at=datetime.now(UTC),
@@ -343,9 +391,133 @@ class AircraftService:
             aircraft=aircraft_list,
         )
 
+    async def _fetch_provider(
+        self, provider: str, lat: float, lon: float, radius_km: float
+    ) -> NearbyAircraftResponse:
+        key = self._provider_cache_key(provider, lat, lon, radius_km)
+        now = time.monotonic()
+
+        async with self._cache_lock:
+            cached = self._provider_cache.get(key)
+            if cached and cached.expires_at > now:
+                return cached.response.model_copy(update={"cache_hit": True})
+
+        if provider == "airplaneslive":
+            result = await self._from_airplaneslive(lat, lon, radius_km)
+        elif provider == "adsbfi":
+            result = await self._from_adsbfi(lat, lon, radius_km)
+        elif provider == "adsblol":
+            result = await self._from_adsblol(lat, lon, radius_km)
+        else:
+            result = await self._from_opensky(lat, lon, radius_km)
+
+        async with self._cache_lock:
+            self._provider_cache[key] = CacheEntry(
+                expires_at=time.monotonic() + self._provider_ttl(provider),
+                response=result,
+            )
+        return result
+
+    @staticmethod
+    def _merge_aircraft(primary: Aircraft, secondary: Aircraft) -> Aircraft:
+        return primary.model_copy(
+            update={
+                "callsign": primary.callsign or secondary.callsign,
+                "origin_country": primary.origin_country or secondary.origin_country,
+                "baro_altitude_m": (
+                    primary.baro_altitude_m
+                    if primary.baro_altitude_m is not None
+                    else secondary.baro_altitude_m
+                ),
+                "geo_altitude_m": (
+                    primary.geo_altitude_m
+                    if primary.geo_altitude_m is not None
+                    else secondary.geo_altitude_m
+                ),
+                "velocity_mps": (
+                    primary.velocity_mps
+                    if primary.velocity_mps is not None
+                    else secondary.velocity_mps
+                ),
+                "track_deg": (
+                    primary.track_deg if primary.track_deg is not None else secondary.track_deg
+                ),
+                "vertical_rate_mps": (
+                    primary.vertical_rate_mps
+                    if primary.vertical_rate_mps is not None
+                    else secondary.vertical_rate_mps
+                ),
+                "squawk": primary.squawk or secondary.squawk,
+                "position_source": primary.position_source or secondary.position_source,
+                "category": primary.category or secondary.category,
+            }
+        )
+
+    def _fuse(
+        self,
+        responses: list[NearbyAircraftResponse],
+        lat: float,
+        lon: float,
+        radius_km: float,
+    ) -> NearbyAircraftResponse:
+        by_icao: dict[str, Aircraft] = {}
+
+        for response in responses:
+            for plane in response.aircraft:
+                distance_km = haversine_km(lat, lon, plane.latitude, plane.longitude)
+                if distance_km > radius_km:
+                    continue
+                candidate = plane.model_copy(
+                    update={
+                        "distance_km": round(distance_km, 3),
+                        "bearing_deg": round(
+                            initial_bearing_deg(lat, lon, plane.latitude, plane.longitude), 2
+                        ),
+                        "overhead_candidate": (
+                            not plane.on_ground
+                            and distance_km <= self.settings.overhead_threshold_km
+                        ),
+                    }
+                )
+
+                existing = by_icao.get(candidate.icao24)
+                if existing is None:
+                    by_icao[candidate.icao24] = candidate
+                    continue
+
+                candidate_time = candidate.last_contact or 0
+                existing_time = existing.last_contact or 0
+                if candidate_time >= existing_time:
+                    by_icao[candidate.icao24] = self._merge_aircraft(candidate, existing)
+                else:
+                    by_icao[candidate.icao24] = self._merge_aircraft(existing, candidate)
+
+        aircraft = sorted(by_icao.values(), key=lambda item: item.distance_km)
+        source_times = [item.source_time for item in responses if item.source_time is not None]
+        rate_limits = [
+            item.upstream_rate_limit_remaining
+            for item in responses
+            if item.upstream_rate_limit_remaining is not None
+        ]
+        providers = [item.data_provider for item in responses]
+        provider_label = providers[0] if len(providers) == 1 else f"Fusion ({' + '.join(providers)})"
+
+        return NearbyAircraftResponse(
+            generated_at=datetime.now(UTC),
+            source_time=max(source_times) if source_times else None,
+            data_provider=provider_label,
+            center=Coordinate(lat=lat, lon=lon),
+            radius_km=radius_km,
+            count=len(aircraft),
+            cache_hit=all(item.cache_hit for item in responses),
+            upstream_rate_limit_remaining=min(rate_limits) if rate_limits else None,
+            aircraft=aircraft,
+        )
+
     async def nearby(self, lat: float, lon: float, radius_km: float) -> NearbyAircraftResponse:
         key = self._cache_key(lat, lon, radius_km)
         now = time.monotonic()
+
         async with self._cache_lock:
             cached = self._cache.get(key)
             if cached and cached.expires_at > now:
@@ -353,35 +525,35 @@ class AircraftService:
             if cached:
                 self._cache.pop(key, None)
 
-        empty_response: NearbyAircraftResponse | None = None
-        last_error: Exception | None = None
+        providers = self.settings.aircraft_provider_list
+        outcomes = await asyncio.gather(
+            *(self._fetch_provider(provider, lat, lon, radius_km) for provider in providers),
+            return_exceptions=True,
+        )
 
-        for provider in self.settings.aircraft_provider_list:
-            try:
-                if provider == "airplaneslive":
-                    result = await self._from_airplaneslive(lat, lon, radius_km)
-                elif provider == "adsbfi":
-                    result = await self._from_adsbfi(lat, lon, radius_km)
-                elif provider == "adsblol":
-                    result = await self._from_adsblol(lat, lon, radius_km)
-                else:
-                    result = await self._from_opensky(lat, lon, radius_km)
-            except (AirplanesLiveError, AdsbFiError, AdsbLolError, OpenSkyError) as exc:
-                last_error = exc
-                continue
+        responses: list[NearbyAircraftResponse] = []
+        errors: list[Exception] = []
+        for outcome in outcomes:
+            if isinstance(outcome, Exception):
+                errors.append(outcome)
+            else:
+                responses.append(outcome)
 
-            if result.aircraft:
-                return await self._store_cache(key, result)
-            if empty_response is None:
-                empty_response = result
+        if not responses:
+            rate_limit = next(
+                (error for error in errors if isinstance(error, OpenSkyRateLimitError)),
+                None,
+            )
+            if rate_limit is not None:
+                raise rate_limit
+            if errors:
+                raise AircraftDataError(
+                    "All aircraft providers failed: " + "; ".join(str(error) for error in errors)
+                )
+            raise AircraftDataError("No aircraft data providers are configured")
 
-        if empty_response is not None:
-            return await self._store_cache(key, empty_response)
-        if isinstance(last_error, OpenSkyRateLimitError):
-            raise last_error
-        if last_error is not None:
-            raise AircraftDataError(str(last_error)) from last_error
-        raise AircraftDataError("No aircraft data providers are configured")
+        result = self._fuse(responses, lat, lon, radius_km)
+        return await self._store_cache(key, result)
 
     async def _store_cache(
         self,
