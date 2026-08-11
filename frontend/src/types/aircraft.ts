@@ -16,6 +16,7 @@ export type Aircraft = {
   position_source: string | null;
   category: string | null;
   last_contact: number | null;
+  data_provider: string | null;
   distance_km: number;
   bearing_deg: number;
   overhead_candidate: boolean;
