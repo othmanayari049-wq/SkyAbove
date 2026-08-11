@@ -11,7 +11,11 @@ class Settings(BaseSettings):
     environment: str = "development"
     cors_origins: str = "http://localhost:3000"
 
-    aircraft_providers: str = "adsblol"
+    aircraft_providers: str = "adsbfi,adsblol,opensky"
+
+    adsbfi_base_url: str = "https://opendata.adsb.fi/api"
+    adsbfi_timeout_seconds: float = Field(default=12.0, gt=1, le=60)
+
     adsblol_base_url: str = "https://api.adsb.lol"
     adsblol_timeout_seconds: float = Field(default=12.0, gt=1, le=60)
 
@@ -33,13 +37,13 @@ class Settings(BaseSettings):
 
     @property
     def aircraft_provider_list(self) -> list[str]:
-        supported = {"adsblol", "opensky"}
+        supported = {"adsbfi", "adsblol", "opensky"}
         providers: list[str] = []
         for raw_provider in self.aircraft_providers.split(","):
             provider = raw_provider.strip().lower()
             if provider in supported and provider not in providers:
                 providers.append(provider)
-        return providers or ["adsblol"]
+        return providers or ["adsbfi", "adsblol", "opensky"]
 
     @property
     def opensky_authenticated(self) -> bool:
