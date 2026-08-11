@@ -7,7 +7,7 @@ import type { Coordinate, NearbyAircraftResponse } from "@/types/aircraft";
 
 const POLL_INTERVAL_MS = Math.max(
   10_000,
-  Number(process.env.NEXT_PUBLIC_POLL_INTERVAL_MS || 30_000),
+  Number(process.env.NEXT_PUBLIC_POLL_INTERVAL_MS || 10_000),
 );
 
 type TrailPoint = [number, number];
@@ -41,7 +41,7 @@ export function useAircraft(location: Coordinate | null, radiusKm: number) {
             updated[plane.icao24] = [
               ...trail,
               [plane.latitude, plane.longitude] as TrailPoint,
-            ].slice(-12);
+            ].slice(-24);
           }
         }
         return updated;
