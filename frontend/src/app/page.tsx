@@ -56,7 +56,8 @@ export default function Home() {
       (item) =>
         item.callsign?.toLowerCase().includes(query) ||
         item.icao24.toLowerCase().includes(query) ||
-        item.origin_country?.toLowerCase().includes(query),
+        item.origin_country?.toLowerCase().includes(query) ||
+        item.data_provider?.toLowerCase().includes(query),
     );
   }, [aircraft, search]);
 
@@ -70,6 +71,10 @@ export default function Home() {
       airborne.length
     );
   }, [aircraft]);
+
+  const providerSummary = data?.data_provider?.startsWith("Fusion")
+    ? "Fused"
+    : data?.data_provider || "—";
 
   return (
     <main className="app-shell">
@@ -170,13 +175,11 @@ export default function Home() {
             <div className="stat-card">
               <span>Aircraft in range</span>
               <strong>{aircraft.length}</strong>
-              <small>{paused ? "Updates paused" : "Refreshes every 30 seconds"}</small>
+              <small>{paused ? "Updates paused" : "Smooth motion between live refreshes"}</small>
             </div>
             <div className="stat-card">
               <span>Closest aircraft</span>
-              <strong>
-                {aircraft[0] ? formatDistance(aircraft[0].distance_km) : "—"}
-              </strong>
+              <strong>{aircraft[0] ? formatDistance(aircraft[0].distance_km) : "—"}</strong>
               <small>
                 {aircraft[0]?.callsign ||
                   aircraft[0]?.icao24.toUpperCase() ||
@@ -189,11 +192,9 @@ export default function Home() {
               <small>Airborne aircraft with altitude data</small>
             </div>
             <div className="stat-card">
-              <span>OpenSky credits</span>
-              <strong>{data?.upstream_rate_limit_remaining ?? "—"}</strong>
-              <small>
-                {data?.cache_hit ? "Served from short cache" : "Upstream remaining, when reported"}
-              </small>
+              <span>Data sources</span>
+              <strong>{providerSummary}</strong>
+              <small>{data?.data_provider || "Waiting for live providers"}</small>
             </div>
           </section>
 
@@ -225,7 +226,7 @@ export default function Home() {
                   <span className="pulse-dot" /> Live map{" "}
                   <small>
                     {data?.source_time
-                      ? `source ${new Date(data.source_time * 1000).toLocaleTimeString()}`
+                      ? `${data.data_provider} · source ${new Date(data.source_time * 1000).toLocaleTimeString()}`
                       : "waiting for source"}
                   </small>
                 </div>
@@ -270,30 +271,30 @@ export default function Home() {
                       <p>No matching aircraft currently reported.</p>
                     </div>
                   ) : (
-                    filteredAircraft.map((plane) => (
-                      <button
-                        key={plane.icao24}
-                        className={`aircraft-row ${
-                          plane.icao24 === selectedIcao ? "selected" : ""
-                        }`}
-                        onClick={() => setSelectedIcao(plane.icao24)}
-                      >
-                        <div
-                          className="mini-plane"
-                          style={{ transform: `rotate(${plane.track_deg ?? 0}deg)` }}
+                    filteredAircraft.map((plane) => {
+                      const iconRotation = (((plane.track_deg ?? 45) - 45) + 360) % 360;
+                      return (
+                        <button
+                          key={plane.icao24}
+                          className={`aircraft-row ${
+                            plane.icao24 === selectedIcao ? "selected" : ""
+                          }`}
+                          onClick={() => setSelectedIcao(plane.icao24)}
                         >
-                          ✈
-                        </div>
-                        <div>
-                          <strong>{plane.callsign || plane.icao24.toUpperCase()}</strong>
-                          <span>{plane.origin_country || "Unknown origin"}</span>
-                        </div>
-                        <div>
-                          <strong>{formatDistance(plane.distance_km)}</strong>
-                          <span>{formatAltitude(plane.baro_altitude_m)}</span>
-                        </div>
-                      </button>
-                    ))
+                          <div className="mini-plane">
+                            <Plane size={18} style={{ transform: `rotate(${iconRotation}deg)` }} />
+                          </div>
+                          <div>
+                            <strong>{plane.callsign || plane.icao24.toUpperCase()}</strong>
+                            <span>{plane.data_provider || plane.origin_country || "Unknown source"}</span>
+                          </div>
+                          <div>
+                            <strong>{formatDistance(plane.distance_km)}</strong>
+                            <span>{formatAltitude(plane.baro_altitude_m)}</span>
+                          </div>
+                        </button>
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -305,7 +306,7 @@ export default function Home() {
 
       <footer>
         <span>SkyAbove is an educational live-airspace viewer, not a safety or navigation system.</span>
-        <span>Aircraft data: OpenSky Network · Map: OpenStreetMap contributors</span>
+        <span>Aircraft data: {data?.data_provider || "live ADS-B providers"} · Map: OpenStreetMap contributors</span>
       </footer>
     </main>
   );
