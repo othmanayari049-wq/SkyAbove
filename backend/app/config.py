@@ -11,16 +11,19 @@ class Settings(BaseSettings):
     environment: str = "development"
     cors_origins: str = "http://localhost:3000"
 
-    aircraft_providers: str = "airplaneslive,adsbfi,adsblol,opensky"
+    aircraft_providers: str = "adsblol,adsbfi,airplaneslive,opensky"
 
     airplaneslive_base_url: str = "https://api.airplanes.live/v2"
     airplaneslive_timeout_seconds: float = Field(default=12.0, gt=1, le=60)
+    airplaneslive_refresh_seconds: float = Field(default=180.0, ge=30, le=3600)
 
     adsbfi_base_url: str = "https://opendata.adsb.fi/api"
     adsbfi_timeout_seconds: float = Field(default=12.0, gt=1, le=60)
+    adsbfi_refresh_seconds: float = Field(default=10.0, ge=5, le=300)
 
     adsblol_base_url: str = "https://api.adsb.lol"
     adsblol_timeout_seconds: float = Field(default=12.0, gt=1, le=60)
+    adsblol_refresh_seconds: float = Field(default=10.0, ge=5, le=300)
 
     opensky_base_url: str = "https://opensky-network.org/api"
     opensky_token_url: str = (
@@ -30,8 +33,9 @@ class Settings(BaseSettings):
     opensky_client_id: str | None = None
     opensky_client_secret: str | None = None
     opensky_timeout_seconds: float = Field(default=12.0, gt=1, le=60)
+    opensky_refresh_seconds: float = Field(default=240.0, ge=30, le=3600)
 
-    cache_ttl_seconds: float = Field(default=8.0, ge=0, le=60)
+    cache_ttl_seconds: float = Field(default=4.0, ge=0, le=60)
     overhead_threshold_km: float = Field(default=8.0, gt=0, le=25)
 
     @property
@@ -46,7 +50,7 @@ class Settings(BaseSettings):
             provider = raw_provider.strip().lower()
             if provider in supported and provider not in providers:
                 providers.append(provider)
-        return providers or ["airplaneslive", "adsbfi", "adsblol", "opensky"]
+        return providers or ["adsblol", "adsbfi", "airplaneslive", "opensky"]
 
     @property
     def opensky_authenticated(self) -> bool:
