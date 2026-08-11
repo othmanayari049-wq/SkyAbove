@@ -1,0 +1,17 @@
+.aircraft-marker-shell {
+  transition: transform 0.95s linear !important;
+  will-change: transform;
+}
+
+.aircraft-marker svg {
+  width: 27px;
+  height: 27px;
+  display: block;
+  fill: currentColor;
+}
+
+.mini-plane svg {
+  display: block;
+  margin: 0 auto;
+  transition: transform 0.25s linear;
+}
