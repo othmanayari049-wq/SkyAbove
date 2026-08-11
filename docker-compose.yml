@@ -4,7 +4,9 @@ services:
       context: ./backend
     environment:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-      AIRCRAFT_PROVIDERS: ${AIRCRAFT_PROVIDERS:-adsbfi,adsblol,opensky}
+      AIRCRAFT_PROVIDERS: ${AIRCRAFT_PROVIDERS:-airplaneslive,adsbfi,adsblol,opensky}
+      AIRPLANESLIVE_BASE_URL: ${AIRPLANESLIVE_BASE_URL:-https://api.airplanes.live/v2}
+      AIRPLANESLIVE_TIMEOUT_SECONDS: ${AIRPLANESLIVE_TIMEOUT_SECONDS:-12}
       ADSBFI_BASE_URL: ${ADSBFI_BASE_URL:-https://opendata.adsb.fi/api}
       ADSBFI_TIMEOUT_SECONDS: ${ADSBFI_TIMEOUT_SECONDS:-12}
       ADSBLOL_BASE_URL: ${ADSBLOL_BASE_URL:-https://api.adsb.lol}
