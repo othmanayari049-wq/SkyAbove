@@ -6,12 +6,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from .adsblol import AdsbFiClient, AdsbFiError, AdsbLolClient, AdsbLolError
-from .airplaneslive import AirplanesLiveClient, AirplanesLiveError
+from .adsblol import AdsbFiClient, AdsbLolClient
+from .airplaneslive import AirplanesLiveClient
 from .config import Settings
 from .geo import haversine_km, initial_bearing_deg, radius_to_bounding_boxes
 from .models import Aircraft, Coordinate, NearbyAircraftResponse
-from .opensky import OpenSkyClient, OpenSkyError, OpenSkyRateLimitError
+from .opensky import OpenSkyClient, OpenSkyRateLimitError
 
 POSITION_SOURCES = {
     0: "ADS-B",
@@ -500,7 +500,11 @@ class AircraftService:
             if item.upstream_rate_limit_remaining is not None
         ]
         providers = [item.data_provider for item in responses]
-        provider_label = providers[0] if len(providers) == 1 else f"Fusion ({' + '.join(providers)})"
+        provider_label = (
+            providers[0]
+            if len(providers) == 1
+            else f"Fusion ({' + '.join(providers)})"
+        )
 
         return NearbyAircraftResponse(
             generated_at=datetime.now(UTC),
